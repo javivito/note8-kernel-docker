@@ -8,10 +8,16 @@ Patch 1: ipc/namespace.c
   Efecto: docker run --net=host deja de causar kernel panic
 
 Patch 2: kernel/bpf/syscall.c
-  Bug: BPF_PROG_QUERY (cmd=12) no implementado -> Samsung LSM lo rechaza con EINVAL
-       antes de llegar al switch, por lo que un case 12: en el switch no basta.
-  Fix: early return ENOENT al inicio de SYSCALL_DEFINE3(bpf,...), antes de security_bpf()
-  Efecto: runc 1.4.0 interpreta ENOENT como "sin programas adjuntos" y continua
+  Problema: Samsung LSM bloquea con EINVAL TODOS los comandos BPF antes del switch:
+    - cmd=12 (BPF_PROG_QUERY): runc lo llama para ver programas adjuntos
+    - cmd=5  (BPF_PROG_LOAD): runc carga el filtro BPF de dispositivos (prog_type=15)
+    - cmd=8  (BPF_PROG_ATTACH): runc adjunta el filtro al cgroup
+    - cmd=9  (BPF_PROG_DETACH): runc desadjunta al parar el contenedor
+  Fix: stubs antes de security_bpf() para cada comando:
+    - cmd=12 -> ENOENT ("sin programas") para que runc intente cargar uno nuevo
+    - cmd=5 con prog_type=15 (BPF_PROG_TYPE_CGROUP_DEVICE) -> fd anonimo (stub)
+    - cmd=8/9 con attach_type=7 (BPF_CGROUP_DEVICE) -> 0 (exito)
+  Efecto: docker run funciona (sin filtrado real de dispositivos, todos permitidos)
 """
 import sys
 import os
@@ -75,7 +81,7 @@ idx = src.find('atomic_set(&ns->count')
 print(src[idx:idx+300])
 
 # ============================================================
-# Patch 2: kernel/bpf/syscall.c - BPF_PROG_QUERY early stub
+# Patch 2: kernel/bpf/syscall.c - BPF cgroup device stubs
 # ============================================================
 
 print("\n=== Patch 2: kernel/bpf/syscall.c ===")
@@ -89,15 +95,11 @@ with open(bpf_path, 'r') as f:
     bsrc = f.read()
 
 # Check if already patched
-STUB_MARKER = '/* BPF_PROG_QUERY early stub'
+STUB_MARKER = '/* BPF cgroup device stubs'
 if STUB_MARKER in bsrc:
-    print("BPF_PROG_QUERY stub ya presente, omitiendo patch 2")
+    print("BPF cgroup device stubs ya presentes, omitiendo patch 2")
 else:
-    # Strategy: add EARLY return at the start of SYSCALL_DEFINE3(bpf,...),
-    # BEFORE security_bpf() and BEFORE any size validation.
-    # This bypasses Samsung's LSM which rejects unknown cmds with EINVAL.
-    # cmd=12 = BPF_PROG_QUERY. ENOENT = runc treats as "no programs attached".
-
+    # Match SYSCALL_DEFINE3(bpf,...) and prepend static fops + stubs
     DEFINE_PAT = 'SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, size)\n{'
 
     if DEFINE_PAT not in bsrc:
@@ -106,13 +108,61 @@ else:
         print(f"Contexto encontrado: {bsrc[idx:idx+200]!r}", file=sys.stderr)
         sys.exit(1)
 
+    # The replacement prepends:
+    # 1. Static file_operations for the stub BPF prog fd
+    # 2. Early-return stubs inside SYSCALL_DEFINE3 before security_bpf()
+    #
+    # Layout of bpf_attr for the relevant commands:
+    #   BPF_PROG_LOAD  (cmd=5): offset 0 = prog_type (u32)
+    #   BPF_PROG_ATTACH (cmd=8): offset 0=target_fd, 4=prog_fd, 8=attach_type (u32)
+    #   BPF_PROG_DETACH (cmd=9): same layout as ATTACH
+    #   BPF_PROG_QUERY (cmd=12): offset 0=target_fd, 4=attach_type (u32)
+    #
+    # BPF_PROG_TYPE_CGROUP_DEVICE = 15
+    # BPF_CGROUP_DEVICE           = 7
+
     EARLY_STUB = (
+        '/* BPF cgroup device stubs: Samsung LSM blocks all BPF calls before the switch.\n'
+        ' * These stubs bypass the LSM for cgroup device operations so runc 1.4.0 can\n'
+        ' * start containers. Device filtering is not enforced (all devices allowed). */\n'
+        'static int bpf_stub_prog_release(struct inode *inode, struct file *filp)\n'
+        '{\n'
+        '\treturn 0;\n'
+        '}\n'
+        '\n'
+        'static const struct file_operations bpf_stub_prog_fops = {\n'
+        '\t.release = bpf_stub_prog_release,\n'
+        '};\n'
+        '\n'
         'SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, size)\n'
         '{\n'
-        '\t/* BPF_PROG_QUERY early stub: cmd=12 rejected by Samsung LSM before switch.\n'
-        '\t * Return ENOENT so runc 1.4.0 treats as "no programs attached". */\n'
+        '\t__u32 __bpf_u32;\n'
+        '\n'
+        '\t/* cmd=12 BPF_PROG_QUERY: ENOENT = no programs attached.\n'
+        '\t * Samsung LSM returns EINVAL for this cmd; we return ENOENT so\n'
+        '\t * runc treats the cgroup as having no existing device filter. */\n'
         '\tif (cmd == 12)\n'
         '\t\treturn -ENOENT;\n'
+        '\n'
+        '\t/* cmd=5 BPF_PROG_LOAD for prog_type=15 (BPF_PROG_TYPE_CGROUP_DEVICE):\n'
+        '\t * Samsung LSM blocks prog loading. Return an anonymous fd so runc\n'
+        '\t * has a handle to pass to BPF_PROG_ATTACH below. */\n'
+        '\tif (cmd == 5 && size >= sizeof(__u32)) {\n'
+        '\t\tif (!get_user(__bpf_u32, (__u32 __user *)uattr) &&\n'
+        '\t\t    __bpf_u32 == 15)\n'
+        '\t\t\treturn anon_inode_getfd("[bpf]", &bpf_stub_prog_fops,\n'
+        '\t\t\t\t\t       NULL, O_RDWR | O_CLOEXEC);\n'
+        '\t}\n'
+        '\n'
+        '\t/* cmd=8 BPF_PROG_ATTACH, cmd=9 BPF_PROG_DETACH for\n'
+        '\t * attach_type=7 (BPF_CGROUP_DEVICE): stub success. */\n'
+        '\tif ((cmd == 8 || cmd == 9) && size >= 12) {\n'
+        '\t\tif (!get_user(__bpf_u32,\n'
+        '\t\t\t      (__u32 __user *)((char __user *)uattr + 8)) &&\n'
+        '\t\t    __bpf_u32 == 7)\n'
+        '\t\t\treturn 0;\n'
+        '\t}\n'
+        '\n'
     )
 
     bsrc = bsrc.replace(DEFINE_PAT, EARLY_STUB, 1)
@@ -121,7 +171,7 @@ else:
         f.write(bsrc)
 
     idx = bsrc.find(STUB_MARKER)
-    print(f"Patch 2 OK: early stub en posicion {idx}")
-    print(bsrc[max(0,idx-20):idx+300])
+    print(f"Patch 2 OK: BPF cgroup device stubs en posicion {idx}")
+    print(bsrc[max(0,idx-5):idx+800])
 
 print("\nTodos los patches aplicados OK")
