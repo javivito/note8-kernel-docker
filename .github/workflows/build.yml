@@ -23,29 +23,18 @@ jobs:
             gcc-aarch64-linux-gnu \
             python3 make git libncurses-dev
 
-      - name: Install Android clang 12 (same as original kernel)
+      - name: Install clang-12 (same major version as original kernel build)
         run: |
-          mkdir -p $HOME/toolchains
-          cd $HOME/toolchains
-          # Android clang r416183b (version 12.0.5) - same as used by ivanmeler
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz \
-            -O clang.tar.gz 2>/dev/null || \
-          wget -q https://github.com/kdrag0n/proton-clang/releases/download/20210522/proton-clang-20210522.tar.gz \
-            -O clang.tar.gz
-          mkdir clang && tar -xf clang.tar.gz -C clang --strip-components=0 2>/dev/null || true
-          # Fallback: use LLVM from apt
-          if [ ! -f "$HOME/toolchains/clang/bin/clang" ]; then
-            sudo apt-get install -y clang-14 lld-14
-            mkdir -p $HOME/toolchains/clang/bin
-            ln -sf /usr/bin/clang-14 $HOME/toolchains/clang/bin/clang
-            ln -sf /usr/bin/clang++-14 $HOME/toolchains/clang/bin/clang++
-            ln -sf /usr/bin/ld.lld-14 $HOME/toolchains/clang/bin/ld.lld
-            for t in /usr/bin/llvm-*-14; do
-              base=$(basename ${t%-14})
-              ln -sf "$t" $HOME/toolchains/clang/bin/"$base"
-            done
-          fi
-          echo "$HOME/toolchains/clang/bin" >> $GITHUB_PATH
+          sudo apt-get install -y clang-12 lld-12 llvm-12
+          # Create symlinks without version suffix
+          sudo ln -sf /usr/bin/clang-12 /usr/local/bin/clang
+          sudo ln -sf /usr/bin/clang++-12 /usr/local/bin/clang++
+          sudo ln -sf /usr/bin/ld.lld-12 /usr/local/bin/ld.lld
+          for t in /usr/bin/llvm-*-12; do
+            base=$(basename ${t%-12})
+            sudo ln -sf "$t" /usr/local/bin/"$base"
+          done
+          clang --version
 
       - name: Clone kernel source (ivanmeler seals-pie-new)
         run: |
