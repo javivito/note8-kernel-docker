@@ -98,33 +98,47 @@ else:
     # Pattern: after BPF_PROG_DETACH case, before "default:"
     # In Samsung 4.4 with CGROUP_BPF, the switch has ATTACH and DETACH but not QUERY
 
+    # The actual Samsung 4.4 kernel structure has:
+    #   #ifdef CONFIG_CGROUP_BPF
+    #   case BPF_PROG_ATTACH: ... break;
+    #   case BPF_PROG_DETACH: ... break;
+    #   #endif
+    #   default: err = -EINVAL; break;
+    # We insert BPF_PROG_QUERY inside the #ifdef block after DETACH
+
     CANDIDATES = [
-        # Try after BPF_PROG_DETACH
-        '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(attr);\n\t\tbreak;\n\tdefault:\n\t\treturn -EINVAL;\n',
-        '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(attr);\n\t\tbreak;\n\n\tdefault:\n\t\treturn -EINVAL;\n',
-        # Try after BPF_PROG_ATTACH (if DETACH not present)
-        '\tcase BPF_PROG_ATTACH:\n\t\terr = bpf_prog_attach(attr);\n\t\tbreak;\n\tdefault:\n\t\treturn -EINVAL;\n',
-        '\tcase BPF_PROG_ATTACH:\n\t\terr = bpf_prog_attach(attr);\n\t\tbreak;\n\n\tdefault:\n\t\treturn -EINVAL;\n',
+        # Main pattern: inside #ifdef CGROUP_BPF, after DETACH, before #endif
+        (
+            '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(&attr);\n\t\tbreak;\n#endif\n',
+            '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(&attr);\n\t\tbreak;\n'
+            '\tcase BPF_PROG_QUERY:\n\t\t/* stub: no programs attached - runc 1.4.0 compat */\n\t\terr = -ENOENT;\n\t\tbreak;\n'
+            '#endif\n'
+        ),
+        # Variant with extra newline
+        (
+            '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(&attr);\n\t\tbreak;\n\n#endif\n',
+            '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(&attr);\n\t\tbreak;\n'
+            '\tcase BPF_PROG_QUERY:\n\t\t/* stub: no programs attached - runc 1.4.0 compat */\n\t\terr = -ENOENT;\n\t\tbreak;\n'
+            '\n#endif\n'
+        ),
+        # Fallback: before default case (no ifdef)
+        (
+            '\tdefault:\n\t\terr = -EINVAL;\n\t\tbreak;\n\t}\n\n\treturn err;\n}',
+            '\tcase BPF_PROG_QUERY:\n\t\t/* stub: no programs attached - runc 1.4.0 compat */\n\t\terr = -ENOENT;\n\t\tbreak;\n'
+            '\tdefault:\n\t\terr = -EINVAL;\n\t\tbreak;\n\t}\n\n\treturn err;\n}'
+        ),
     ]
 
-    # The stub to insert: BPF_PROG_QUERY returns -ENOENT (no programs attached)
-    # runc 1.4.0 treats ENOENT as "no existing programs, proceed to attach"
-    QUERY_STUB = '\tcase BPF_PROG_QUERY:\n\t\t/* stub: report no programs attached (BPF_PROG_QUERY added for runc compat) */\n\t\treturn -ENOENT;\n'
-
     patched = False
-    for OLD2 in CANDIDATES:
+    for OLD2, NEW2 in CANDIDATES:
         if OLD2 in bsrc:
-            NEW2 = OLD2.replace('\tdefault:\n\t\treturn -EINVAL;\n',
-                                QUERY_STUB + '\tdefault:\n\t\treturn -EINVAL;\n')
             bsrc = bsrc.replace(OLD2, NEW2, 1)
             patched = True
-            print(f"Patch 2 OK: BPF_PROG_QUERY stub añadido (patron: {OLD2[:60]!r}...)")
+            print(f"Patch 2 OK: BPF_PROG_QUERY stub añadido")
             break
 
     if not patched:
-        # Show what we found to help debug
-        print("WARNING: patron BPF switch default no encontrado, buscando alternativa...", file=sys.stderr)
-        # Show context around 'default:' inside the bpf syscall
+        print("WARNING: patron BPF switch no encontrado, buscando alternativa...", file=sys.stderr)
         idx = bsrc.find('SYSCALL_DEFINE3(bpf,')
         if idx >= 0:
             end_idx = bsrc.find('\nSYSCALL_', idx + 1)
