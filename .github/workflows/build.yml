@@ -88,7 +88,7 @@ jobs:
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CC=clang \
             HOSTCFLAGS="-fcommon" \
-            KCFLAGS="-Wno-error" \
+            KCFLAGS="-Wno-error -fno-builtin-bcmp -fno-builtin-stpcpy" \
             Image.gz-dtb 2>&1 | tee /tmp/kernel_build.log | tail -100
 
       - name: Check output
