@@ -42,14 +42,18 @@ jobs:
           cd kernel
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- exynos8895-greatlte_defconfig
           cat ../docker.fragment >> .config
+          # CGROUP_BPF: kernel 4.4 no soporta BPF_CGROUP_DEVICE (añadido en 4.15)
+          # runc moderno intenta usarlo y falla con EINVAL -> deshabilitar
+          ./scripts/config --disable CGROUP_BPF
+          # Disable RKP Knox blobs
           printf 'CONFIG_RKP=n\nCONFIG_RKP_KDP=n\nCONFIG_RKP_NS_PROT=n\n' >> .config
           printf 'CONFIG_RKP_DMAP_PROT=n\nCONFIG_RKP_6G=n\nCONFIG_RKP_CFP=n\n' >> .config
           printf 'CONFIG_RKP_CFP_JOPP=n\nCONFIG_TIMA=n\nCONFIG_TIMA_LOG=n\n' >> .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Verify Docker options
+      - name: Verify config
         run: |
-          grep -E "CONFIG_BRIDGE|CONFIG_OVERLAY_FS|CONFIG_VETH|CONFIG_NET_NS|POSIX_MQUEUE|ADDRTYPE" kernel/.config
+          grep -E "CONFIG_BRIDGE|CONFIG_OVERLAY_FS|CONFIG_VETH|CONFIG_NET_NS|CGROUP_BPF|POSIX_MQUEUE" kernel/.config
 
       - name: Build kernel (GCC)
         run: |
