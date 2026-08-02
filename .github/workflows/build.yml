@@ -21,7 +21,7 @@ jobs:
             bc bison flex libssl-dev libelf-dev \
             binutils-aarch64-linux-gnu \
             gcc-9-aarch64-linux-gnu \
-            python3 make git libncurses-dev zip
+            python3 make git libncurses-dev zip patch
           sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-9 /usr/local/bin/aarch64-linux-gnu-gcc
           aarch64-linux-gnu-gcc --version
 
@@ -32,41 +32,18 @@ jobs:
             https://github.com/8890q/android_kernel_samsung_universal8895 \
             kernel
 
-      - name: Fix ipc/namespace.c (Samsung bug: ns->user_ns asignado DESPUES de mq_init_ns)
+      - name: Apply source patches
         run: |
-          # Bug: mq_init_ns(ns) usa ns->user_ns pero se asigna después -> NULL pointer crash
-          # Fix: mover ns->user_ns = get_user_ns(user_ns) ANTES de mq_init_ns(ns)
           cd kernel
-          python3 - << 'EOF'
-          import re
-
-          with open('ipc/namespace.c', 'r') as f:
-              src = f.read()
-
-          # Eliminar la línea original de asignación user_ns (está después de mq_init_ns)
-          src = re.sub(r'\n\tns->user_ns = get_user_ns\(user_ns\);\n', '\n', src)
-
-          # Insertar ns->user_ns ANTES de mq_init_ns
-          src = src.replace(
-              '\tatomic_set(&ns->count, 1);\n\terr = mq_init_ns(ns);',
-              '\tatomic_set(&ns->count, 1);\n\tns->user_ns = get_user_ns(user_ns);\n\terr = mq_init_ns(ns);'
-          )
-
-          with open('ipc/namespace.c', 'w') as f:
-              f.write(src)
-
-          print("Patch aplicado OK")
-          EOF
-
-          # Verificar resultado
-          grep -A5 "atomic_set.*count" ipc/namespace.c | head -10
+          patch -p1 < ../patches/ipc_namespace.patch
+          echo "=== ipc/namespace.c tras patch ==="
+          grep -A8 "atomic_set.*count" ipc/namespace.c | head -12
 
       - name: Apply kernel config
         run: |
           cd kernel
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- exynos8895-greatlte_defconfig
           cat ../docker.fragment >> .config
-          # Disable RKP Knox blobs (Knox already burned, Magisk installed)
           printf 'CONFIG_RKP=n\nCONFIG_RKP_KDP=n\nCONFIG_RKP_NS_PROT=n\n' >> .config
           printf 'CONFIG_RKP_DMAP_PROT=n\nCONFIG_RKP_6G=n\nCONFIG_RKP_CFP=n\n' >> .config
           printf 'CONFIG_RKP_CFP_JOPP=n\nCONFIG_TIMA=n\nCONFIG_TIMA_LOG=n\n' >> .config
