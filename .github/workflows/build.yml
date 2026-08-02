@@ -21,7 +21,7 @@ jobs:
             bc bison flex libssl-dev libelf-dev \
             binutils-aarch64-linux-gnu \
             gcc-9-aarch64-linux-gnu \
-            python3 make git libncurses-dev zip patch
+            python3 make git libncurses-dev zip
           sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-9 /usr/local/bin/aarch64-linux-gnu-gcc
           aarch64-linux-gnu-gcc --version
 
@@ -35,9 +35,7 @@ jobs:
       - name: Apply source patches
         run: |
           cd kernel
-          patch -p1 < ../patches/ipc_namespace.patch
-          echo "=== ipc/namespace.c tras patch ==="
-          grep -A8 "atomic_set.*count" ipc/namespace.c | head -12
+          python3 ../patches/apply_patches.py
 
       - name: Apply kernel config
         run: |
