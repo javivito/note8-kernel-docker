@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
 
     steps:
@@ -20,8 +20,9 @@ jobs:
           sudo apt-get install -y \
             bc bison flex libssl-dev libelf-dev \
             binutils-aarch64-linux-gnu \
-            gcc-aarch64-linux-gnu \
+            gcc-9-aarch64-linux-gnu \
             python3 make git libncurses-dev zip
+          sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-9 /usr/local/bin/aarch64-linux-gnu-gcc
           aarch64-linux-gnu-gcc --version
 
       - name: Clone kernel source (ivanmeler seals-pie-new)
