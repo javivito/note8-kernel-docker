@@ -36,16 +36,28 @@ jobs:
         run: |
           cd kernel
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- exynos8895-greatlte_defconfig
-          cat ../docker.fragment >> .config
+
+          # Opciones Docker adicionales (BRIDGE, OVERLAY_FS, ADDRTYPE)
+          grep -v "POSIX_MQUEUE" ../docker.fragment >> .config
+
+          # Desactivar POSIX_MQUEUE limpiamente con scripts/config
+          # (olddefconfig no resuelve bien conflictos con cat >> .config)
+          ./scripts/config --disable POSIX_MQUEUE
+          ./scripts/config --disable POSIX_MQUEUE_SYSCTL
+
+          # Activar ADDRTYPE
+          ./scripts/config --enable NETFILTER_XT_MATCH_ADDRTYPE
+
           # Disable RKP Knox blobs (Knox already burned, Magisk installed)
           printf 'CONFIG_RKP=n\nCONFIG_RKP_KDP=n\nCONFIG_RKP_NS_PROT=n\n' >> .config
           printf 'CONFIG_RKP_DMAP_PROT=n\nCONFIG_RKP_6G=n\nCONFIG_RKP_CFP=n\n' >> .config
           printf 'CONFIG_RKP_CFP_JOPP=n\nCONFIG_TIMA=n\nCONFIG_TIMA_LOG=n\n' >> .config
+
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: Verify Docker options
         run: |
-          grep -E "CONFIG_BRIDGE|CONFIG_OVERLAY_FS|CONFIG_VETH|CONFIG_NET_NS" kernel/.config
+          grep -E "CONFIG_BRIDGE|CONFIG_OVERLAY_FS|CONFIG_VETH|CONFIG_NET_NS|POSIX_MQUEUE|ADDRTYPE" kernel/.config
 
       - name: Build kernel (GCC)
         run: |
@@ -73,7 +85,6 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
           sed -i 's/do.devicecheck=1/do.devicecheck=0/' AnyKernel3/anykernel.sh
           sed -i 's/device.name1=/device.name1=greatlte/' AnyKernel3/anykernel.sh
-          # Fix partition path for greatlte (UFS, not MMC)
           sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|block=/dev/block/platform/11120000.ufs/by-name/BOOT;|' AnyKernel3/anykernel.sh
           if [ -f kernel/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel/arch/arm64/boot/Image.gz-dtb AnyKernel3/
