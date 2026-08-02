@@ -90,6 +90,7 @@ jobs:
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
+            HOSTCFLAGS="-fcommon" \
             Image.gz-dtb 2>&1 | tail -50
 
       - name: Check output
