@@ -73,6 +73,7 @@ jobs:
 
       - name: Build kernel
         run: |
+          set -o pipefail
           cd kernel
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-gnu-
@@ -91,13 +92,16 @@ jobs:
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
             HOSTCFLAGS="-fcommon" \
-            Image.gz-dtb 2>&1 | tail -50
+            Image.gz-dtb 2>&1 | tee /tmp/kernel_build.log | tail -100
 
       - name: Check output
         run: |
-          ls -lh kernel/arch/arm64/boot/Image.gz-dtb || echo "Image.gz-dtb not found"
-          ls -lh kernel/arch/arm64/boot/Image.gz || echo "Image.gz not found"
-          ls -lh kernel/arch/arm64/boot/Image || echo "Image not found"
+          echo "=== arch/arm64/boot contents ==="
+          ls -lh kernel/arch/arm64/boot/ || echo "(empty)"
+          echo "=== Last 30 build lines ==="
+          tail -30 /tmp/kernel_build.log || true
+          echo "=== Build errors ==="
+          grep -i "error:\|Error\b" /tmp/kernel_build.log | tail -20 || echo "none"
 
       - name: Package with AnyKernel3
         run: |
