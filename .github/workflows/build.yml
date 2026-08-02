@@ -25,22 +25,22 @@ jobs:
           sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-9 /usr/local/bin/aarch64-linux-gnu-gcc
           aarch64-linux-gnu-gcc --version
 
-      - name: Clone kernel source (ivanmeler seals-pie-new)
+      - name: Clone kernel source (8890q lineage-19.1 = kernel 4.4.302, LineageOS 20)
         run: |
           git clone --depth=1 \
-            --branch seals-pie-new \
-            https://github.com/ivanmeler/android_kernel_samsung_universal8895 \
+            --branch lineage-19.1 \
+            https://github.com/8890q/android_kernel_samsung_universal8895 \
             kernel
 
       - name: Apply kernel config
         run: |
-          cp kernel.config kernel/.config
-          cat docker.fragment >> kernel/.config
-          # Disable RKP Knox blobs (Knox already burned, Magisk installed)
-          printf 'CONFIG_RKP=n\nCONFIG_RKP_KDP=n\nCONFIG_RKP_NS_PROT=n\n' >> kernel/.config
-          printf 'CONFIG_RKP_DMAP_PROT=n\nCONFIG_RKP_6G=n\nCONFIG_RKP_CFP=n\n' >> kernel/.config
-          printf 'CONFIG_RKP_CFP_JOPP=n\nCONFIG_TIMA=n\nCONFIG_TIMA_LOG=n\n' >> kernel/.config
           cd kernel
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- exynos8895-greatlte_defconfig
+          cat ../docker.fragment >> .config
+          # Disable RKP Knox blobs (Knox already burned, Magisk installed)
+          printf 'CONFIG_RKP=n\nCONFIG_RKP_KDP=n\nCONFIG_RKP_NS_PROT=n\n' >> .config
+          printf 'CONFIG_RKP_DMAP_PROT=n\nCONFIG_RKP_6G=n\nCONFIG_RKP_CFP=n\n' >> .config
+          printf 'CONFIG_RKP_CFP_JOPP=n\nCONFIG_TIMA=n\nCONFIG_TIMA_LOG=n\n' >> .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: Verify Docker options
@@ -73,6 +73,8 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
           sed -i 's/do.devicecheck=1/do.devicecheck=0/' AnyKernel3/anykernel.sh
           sed -i 's/device.name1=/device.name1=greatlte/' AnyKernel3/anykernel.sh
+          # Fix partition path for greatlte (UFS, not MMC)
+          sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|block=/dev/block/platform/11120000.ufs/by-name/BOOT;|' AnyKernel3/anykernel.sh
           if [ -f kernel/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f kernel/arch/arm64/boot/Image.gz ]; then
