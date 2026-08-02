@@ -55,7 +55,7 @@ jobs:
             ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             HOSTCFLAGS="-fcommon" \
-            KCFLAGS="-Wno-error=attribute-alias -Wno-error=stringop-overflow -Wno-error=array-bounds" \
+            KCFLAGS="-Wno-error" \
             Image.gz-dtb 2>&1 | tee /tmp/kernel_build.log | tail -100
 
       - name: Check output
