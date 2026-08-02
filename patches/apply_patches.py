@@ -87,8 +87,8 @@ if not os.path.exists(bpf_path):
 with open(bpf_path, 'r') as f:
     bsrc = f.read()
 
-# Check if BPF_PROG_QUERY already handled
-if 'BPF_PROG_QUERY' in bsrc:
+# Check if BPF_PROG_QUERY already handled (by name or numeric stub)
+if 'BPF_PROG_QUERY' in bsrc or 'case 12: /* BPF_PROG_QUERY' in bsrc:
     print("BPF_PROG_QUERY ya presente en syscall.c, omitiendo patch 2")
 else:
     # Find the default: return -EINVAL; in the bpf() syscall
@@ -108,23 +108,24 @@ else:
 
     CANDIDATES = [
         # Main pattern: inside #ifdef CGROUP_BPF, after DETACH, before #endif
+        # BPF_PROG_QUERY not defined in Samsung 4.4 headers, use numeric value 12
         (
             '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(&attr);\n\t\tbreak;\n#endif\n',
             '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(&attr);\n\t\tbreak;\n'
-            '\tcase BPF_PROG_QUERY:\n\t\t/* stub: no programs attached - runc 1.4.0 compat */\n\t\terr = -ENOENT;\n\t\tbreak;\n'
+            '\tcase 12: /* BPF_PROG_QUERY - stub: no programs attached - runc 1.4.0 compat */\n\t\terr = -ENOENT;\n\t\tbreak;\n'
             '#endif\n'
         ),
-        # Variant with extra newline
+        # Variant with extra newline before #endif
         (
             '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(&attr);\n\t\tbreak;\n\n#endif\n',
             '\tcase BPF_PROG_DETACH:\n\t\terr = bpf_prog_detach(&attr);\n\t\tbreak;\n'
-            '\tcase BPF_PROG_QUERY:\n\t\t/* stub: no programs attached - runc 1.4.0 compat */\n\t\terr = -ENOENT;\n\t\tbreak;\n'
+            '\tcase 12: /* BPF_PROG_QUERY - stub: no programs attached - runc 1.4.0 compat */\n\t\terr = -ENOENT;\n\t\tbreak;\n'
             '\n#endif\n'
         ),
-        # Fallback: before default case (no ifdef)
+        # Fallback: before default case
         (
             '\tdefault:\n\t\terr = -EINVAL;\n\t\tbreak;\n\t}\n\n\treturn err;\n}',
-            '\tcase BPF_PROG_QUERY:\n\t\t/* stub: no programs attached - runc 1.4.0 compat */\n\t\terr = -ENOENT;\n\t\tbreak;\n'
+            '\tcase 12: /* BPF_PROG_QUERY - stub: no programs attached - runc 1.4.0 compat */\n\t\terr = -ENOENT;\n\t\tbreak;\n'
             '\tdefault:\n\t\terr = -EINVAL;\n\t\tbreak;\n\t}\n\n\treturn err;\n}'
         ),
     ]
@@ -151,8 +152,8 @@ else:
         f.write(bsrc)
 
     # Verify
-    idx = bsrc.find('BPF_PROG_QUERY')
-    print(f"Verificacion: BPF_PROG_QUERY en posicion {idx}")
+    idx = bsrc.find('case 12: /* BPF_PROG_QUERY')
+    print(f"Verificacion: case 12 BPF_PROG_QUERY en posicion {idx}")
     print(bsrc[max(0,idx-100):idx+200])
 
 print("\nTodos los patches aplicados OK")
