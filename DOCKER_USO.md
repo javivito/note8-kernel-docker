@@ -19,7 +19,7 @@ Espera ~20 segundos hasta que aparezca "Docker is up!".
 
 Instalar **Termux:Boot** desde F-Droid y abrirlo al menos una vez para que quede registrado.
 
-Crear el script de arranque:
+Crear el script de arranque **desde dentro de Termux** (no como root externo):
 ```sh
 mkdir -p ~/.termux/boot
 cat > ~/.termux/boot/start_docker.sh << 'EOF'
@@ -30,6 +30,10 @@ su -c 'sh /sdcard/Download/start_docker_note8.sh'
 EOF
 chmod +x ~/.termux/boot/start_docker.sh
 ```
+
+> **Nota:** `~/.termux/boot/` equivale a `/data/data/com.termux/files/home/.termux/boot/`.
+> Termux:Boot solo ejecuta scripts que sean propiedad del UID de Termux — si se crean como root
+> (desde ADB o `su -c`) el script se ignora silenciosamente. Crear siempre desde la sesión de Termux.
 
 A partir del siguiente reboot, Docker arranca solo sin intervención.
 
@@ -73,10 +77,10 @@ Hay tres opciones. La recomendada es el **wrapper script** porque funciona en se
 
 ### Opción A: Wrapper script (recomendada)
 
-Renombrar el binario original y crear un wrapper que inyecta el socket:
+Renombrar el binario original y crear un wrapper que inyecta el socket.
 
+**Ejecutar directamente en Termux** (abrir Termux en el dispositivo):
 ```sh
-# Como root en Termux
 TBIN=/data/data/com.termux/files/usr/bin
 mv $TBIN/docker $TBIN/docker.real
 
@@ -88,6 +92,10 @@ EOF
 
 chmod +x $TBIN/docker
 ```
+
+> **Nota:** No hacerlo como `su -c` desde ADB — los ficheros en `/data/data/com.termux/` necesitan
+> el UID y contexto SELinux de Termux (`u0_a<N>:c<...>`). Si se copian como root quedan inaccesibles
+> para Termux aunque el chmod sea correcto. Ejecutar siempre desde dentro de Termux.
 
 Desde ese momento `docker ps`, `docker run`, etc. funcionan sin variables extra.
 
