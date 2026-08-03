@@ -5,12 +5,14 @@
 
 ## Qué hay instalado
 
-| Fichero | Ubicación | Para qué |
+| Fichero | Ubicación en dispositivo | Para qué |
 |---|---|---|
-| Script arranque Docker | `/sdcard/Download/start_docker_note8.sh` | Arranca dockerd con cgroupv1 |
-| Arranque automático | `~/.termux/boot/start_docker.sh` | Lo lanza solo al encender el móvil |
-| Wrapper Termux | `/data/data/com.termux/files/usr/bin/docker` | Inyecta el socket, evita escribir DOCKER_HOST |
-| Script Magisk service.d | `/data/adb/service.d/termux_path.sh` | Pone `docker` en `/debug_ramdisk` para root en cada boot |
+| `start_docker_note8.sh` | `/sdcard/Download/start_docker_note8.sh` | Arranca dockerd con cgroupv1 (arranque manual) |
+| `magisk_service_docker.sh` | `/data/adb/service.d/termux_path.sh` | Arranque automático + docker para root + ADB WiFi |
+| `docker_xbin` | `/data/adb/docker_xbin` | Wrapper docker usado por el service.d |
+| Wrapper Termux | `/data/data/com.termux/files/usr/bin/docker` | Inyecta DOCKER_HOST para usuario Termux |
+| Log arranque | `/data/adb/boot.log` | Diagnóstico del arranque automático |
+| Log dockerd | `/sdcard/Download/dockerd.log` | Log del daemon de Docker |
 
 ---
 
@@ -177,66 +179,89 @@ chmod +x /data/data/com.termux/files/usr/bin/docker
 
 ---
 
-### Paso 5 — Instalar el script de Magisk
+### Paso 5 — Instalar el script de Magisk (arranque automático + docker para root)
 
-Esto hace que `docker` funcione también cuando escribes `su` en Termux (shell de root).
-Magisk ejecuta este script en cada arranque del móvil.
+Este script hace tres cosas en cada arranque:
+1. Pone `docker` disponible para root sin escribir PATH
+2. Activa ADB por WiFi en el puerto 5555
+3. Arranca Docker automáticamente
 
-En Termux:
+> **Importante:** Los ficheros en `/data/adb/` tienen un contexto de seguridad especial
+> (`adb_data_file`) que solo puede escribirse desde el proceso `magiskd`, no desde un
+> `su` normal de ADB. Por eso hay que usar `nsenter` para entrar en el espacio de
+> nombres de Magisk antes de copiar el fichero.
+
+Conecta el móvil por USB al PC y ejecuta desde el PC:
 
 ```sh
-su
+# 1. Ver el PID de magiskd
+adb shell su -c 'ps -A | grep magiskd'
+# Apunta el primer PID que aparezca (el de /1 como padre)
+
+# 2. Abrir shell en el namespace de magiskd (sustituye <PID> por el número)
+adb shell su -c 'nsenter --mount=/proc/<PID>/ns/mnt -- /system/bin/sh'
+```
+
+Ahora estás dentro del namespace correcto. Copia los ficheros:
+
+```sh
+# Copiar el script de arranque
 cp /sdcard/Download/magisk_service_docker.sh /data/adb/service.d/termux_path.sh
 chmod +x /data/adb/service.d/termux_path.sh
+
+# Copiar el wrapper de docker para root
+cp /sdcard/Download/docker_xbin /data/adb/docker_xbin
+chmod +x /data/adb/docker_xbin
+
+# Salir del namespace
 exit
 ```
 
+> **Rutas:** Las rutas `/data/adb/` son las mismas en todos los dispositivos Android con Magisk.
+> No necesitas cambiarlas.
+
+> **¿Por qué nsenter?** `adb shell su -c` da root pero con el contexto SELinux de ADB (`shell`),
+> que no puede escribir en `/data/adb/`. `nsenter` entra en el contexto real de Magisk
+> que sí tiene permiso.
+
 ---
 
-### Paso 6 — Instalar el arranque automático (opcional pero recomendado)
+### Paso 6 — Reiniciar y verificar
 
-Con esto Docker arranca solo al encender el móvil sin que tengas que hacer nada.
+Reinicia el móvil. Espera **~2 minutos** (el script espera 45 segundos a que el sistema
+arranque, luego otros 20-25 segundos para que Docker esté listo).
 
-Primero instala **Termux:Boot** desde F-Droid y ábrelo una vez para que quede registrado.
-Luego en Termux:
-
+Desde el PC con ADB:
 ```sh
-mkdir -p ~/.termux/boot
+# Conectar por WiFi (ya no necesitas USB)
+adb connect <IP_del_movil>:5555
 
-cat > ~/.termux/boot/start_docker.sh << 'EOF'
-#!/data/data/com.termux/files/usr/bin/sh
-sleep 30
-su -c 'sh /sdcard/Download/start_docker_note8.sh'
-EOF
-
-chmod +x ~/.termux/boot/start_docker.sh
+# Probar docker
+adb shell su -c 'docker ps'
 ```
 
-> El `sleep 30` es necesario para que el sistema termine de arrancar antes de lanzar Docker.
-> Sin él, Docker falla porque el kernel aún no está listo.
-
-> **Igual que en el paso 4:** hacerlo desde Termux, nunca como root externo.
-
----
-
-### Paso 7 — Reiniciar y verificar
-
-Reinicia el móvil. Después de ~50 segundos, abre Termux y prueba:
-
+O desde Termux en el móvil:
 ```sh
 su
 docker ps
 ```
 
-Si ves una tabla (aunque esté vacía) es que todo funciona.
+Si ves una tabla (aunque esté vacía) todo funciona.
 
-Si falla, arranca Docker manualmente:
+Si falla, comprueba el log de arranque:
+```sh
+su -c 'cat /data/adb/boot.log'
+```
 
+Y el log de dockerd:
+```sh
+cat /sdcard/Download/dockerd.log | tail -20
+```
+
+Si el arranque automático falla, puedes arrancarlo manualmente:
 ```sh
 su -c 'sh /sdcard/Download/start_docker_note8.sh'
 ```
-
-Y vuelve a probar `docker ps`.
 
 ---
 
