@@ -4,8 +4,9 @@
 # =============================================================================
 # Instalación:
 #   1. Copiar este fichero a /data/adb/service.d/termux_path.sh en el dispositivo
-#   2. Copiar docker_wrapper.sh (renombrado a docker_xbin) a /data/adb/docker_xbin
-#   3. Dar permisos de ejecución: chmod +x /data/adb/service.d/termux_path.sh
+#   2. Copiar docker_wrapper.sh (renombrado a docker_xbin) a /data/data/com.termux/files/home/scripts/docker_xbin
+#   3. Copiar start_docker_note8.sh a /data/adb/scripts/start_docker_note8.sh
+#   4. Dar permisos: chmod +x /data/adb/service.d/termux_path.sh /data/adb/scripts/*
 #
 # IMPORTANTE: Escribir estos ficheros desde nsenter en el namespace de magiskd,
 # NO desde adb shell su -c (contexto SELinux incorrecto):
@@ -24,7 +25,7 @@ echo "[$(date)] step1: start" > $LOG
 
 # 1. Wrapper docker en /debug_ramdisk (tmpfs que está en el PATH de root)
 #    Esto permite usar 'docker' desde cualquier shell root sin escribir PATH
-cp /data/adb/docker_xbin /debug_ramdisk/docker
+cp /data/data/com.termux/files/home/scripts/docker_xbin /debug_ramdisk/docker
 chmod +x /debug_ramdisk/docker
 
 echo "[$(date)] step2: docker wrapper ok" >> $LOG
@@ -54,7 +55,7 @@ unshare -m sh -c "
     mkdir -p /sys/fs/cgroup/\$s
     mount -t cgroup -o \$s cgroup /sys/fs/cgroup/\$s 2>/dev/null
   done
-  exec $PREFIX/bin/dockerd >> /sdcard/Download/dockerd.log 2>&1
+  exec $PREFIX/bin/dockerd >> /data/data/com.termux/files/home/scripts/dockerd.log 2>&1
 " &
 
 echo "[$(date)] step5: dockerd launched" >> $LOG

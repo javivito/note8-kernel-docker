@@ -147,12 +147,20 @@ exit
 
 ### Paso 3 — Copiar los scripts al móvil
 
-Descarga del repositorio y copia a `/sdcard/Download/`:
-
 ```sh
-adb push start_docker_note8.sh /sdcard/Download/start_docker_note8.sh
-adb push docker_wrapper.sh /sdcard/Download/docker_xbin
-adb push magisk_service_docker.sh /sdcard/Download/magisk_service_docker.sh
+# Crear carpeta en el dispositivo (desde nsenter en namespace magiskd, ver Paso 5)
+mkdir -p /data/adb/scripts
+
+adb push scripts/start_docker_note8.sh /sdcard/Download/start_docker_note8.sh
+adb push scripts/docker_wrapper.sh /sdcard/Download/docker_xbin
+adb push scripts/magisk_service_docker.sh /sdcard/Download/magisk_service_docker.sh
+```
+
+Luego desde nsenter (Paso 5), mover a la ubicación definitiva:
+```sh
+cp /sdcard/Download/start_docker_note8.sh /data/adb/scripts/start_docker_note8.sh
+cp /sdcard/Download/docker_xbin /data/adb/scripts/docker_xbin
+chmod +x /data/adb/scripts/*
 ```
 
 ### Paso 4 — Instalar el wrapper en Termux
@@ -183,10 +191,11 @@ adb shell su -c 'nsenter --mount=/proc/<PID>/ns/mnt -- /system/bin/sh'
 Dentro del namespace:
 
 ```sh
+mkdir -p /data/adb/scripts
 cp /sdcard/Download/magisk_service_docker.sh /data/adb/service.d/termux_path.sh
-chmod +x /data/adb/service.d/termux_path.sh
-cp /sdcard/Download/docker_xbin /data/adb/docker_xbin
-chmod +x /data/adb/docker_xbin
+cp /sdcard/Download/start_docker_note8.sh /data/adb/scripts/start_docker_note8.sh
+cp /sdcard/Download/docker_xbin /data/adb/scripts/docker_xbin
+chmod +x /data/adb/service.d/termux_path.sh /data/adb/scripts/*
 exit
 ```
 
@@ -295,10 +304,10 @@ services:
 su -c 'ps aux | grep dockerd'
 
 # Log del daemon
-cat /sdcard/Download/dockerd.log | tail -20
+cat /data/adb/scripts/dockerd.log | tail -20
 
 # Reiniciar manualmente
-su -c 'killall dockerd containerd 2>/dev/null; sh /sdcard/Download/start_docker_note8.sh'
+su -c 'killall dockerd containerd 2>/dev/null; sh /data/adb/service.d/termux_path.sh'
 ```
 
 ---

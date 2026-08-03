@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # Start Docker on Samsung Note 8 (greatlte, kernel 4.4.302 custom)
-# Run as root: su -c sh /sdcard/Download/start_docker_note8.sh
+# Run as root: su -c sh /data/adb/scripts/start_docker_note8.sh
 #
 # Requirements:
 # - Custom kernel with BPF stubs (cmd=12->ENOENT, cmd=5 type=15->fd, cmd=8/9 attach=7->0)
@@ -33,7 +33,7 @@ unshare -m sh -c "
     mount -t cgroup -o \$s cgroup /sys/fs/cgroup/\$s 2>/dev/null
   done
 
-  exec $PREFIX/bin/dockerd >> /sdcard/Download/dockerd.log 2>&1
+  exec $PREFIX/bin/dockerd >> /data/data/com.termux/files/home/scripts/dockerd.log 2>&1
 " &
 
 echo "Docker starting... wait 20 seconds"
@@ -43,5 +43,5 @@ if docker info > /dev/null 2>&1; then
   echo "Docker is up!"
   docker info | grep -E "Cgroup|Storage|Version"
 else
-  echo "Docker failed to start. Check /sdcard/Download/dockerd.log"
+  echo "Docker failed to start. Check /data/data/com.termux/files/home/scripts/dockerd.log"
 fi

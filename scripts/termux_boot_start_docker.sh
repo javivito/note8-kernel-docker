@@ -6,4 +6,4 @@
 # Esperar a que el sistema arranque del todo
 sleep 30
 
-su -c 'sh /sdcard/Download/start_docker_note8.sh'
+su -c 'sh /data/data/com.termux/files/home/scripts/start_docker_note8.sh'
