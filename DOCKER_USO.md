@@ -7,7 +7,8 @@
 
 | Fichero | Ubicación en dispositivo | Para qué |
 |---|---|---|
-| `start_docker_note8.sh` | `/sdcard/Download/start_docker_note8.sh` | Arranca dockerd con cgroupv1 (arranque manual) |
+| `start_docker_note8.sh` | `/sdcard/Download/start_docker_note8.sh` | Arranca dockerd con cgroupv1 y storage driver vfs |
+| `daemon.json` | `/data/data/com.termux/files/usr/etc/docker/daemon.json` | Config de dockerd (vfs, sin iptables ni bridge) |
 | `magisk_service_docker.sh` | `/data/adb/service.d/termux_path.sh` | Arranque automático + docker para root + ADB WiFi |
 | `docker_xbin` | `/data/adb/docker_xbin` | Wrapper docker usado por el service.d |
 | Wrapper Termux | `/data/data/com.termux/files/usr/bin/docker` | Inyecta DOCKER_HOST para usuario Termux |
@@ -73,6 +74,44 @@ docker run -d \
 
 Acceder en `http://<ip-del-movil>:9000`
 
+### Nextcloud con MariaDB (5 usuarios, compose para Portainer → Stacks)
+
+```yaml
+services:
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=nextcloudpassword
+    volumes:
+      - /data/nextcloud_db:/var/lib/mysql
+
+  nextcloud:
+    image: nextcloud:latest
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - db
+    environment:
+      - MYSQL_HOST=127.0.0.1
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=nextcloudpassword
+      - NEXTCLOUD_ADMIN_USER=admin
+      - NEXTCLOUD_ADMIN_PASSWORD=tupassword
+      - NEXTCLOUD_TRUSTED_DOMAINS=192.168.1.191
+    volumes:
+      - /data/nextcloud:/var/www/html
+```
+
+> Con storage driver `vfs` no hace falta `privileged` ni `cap_add`.
+> Cambiar `192.168.1.191` por la IP de tu dispositivo.
+> Acceder en `http://<ip>:80`
+
 > **Nota sobre el socket:** Las apps que _gestionan_ Docker (Portainer, Watchtower, Traefik)
 > necesitan montar el socket con `-v`. La ruta en este dispositivo es siempre:
 > `/data/data/com.termux/files/usr/var/run/docker.sock`
@@ -122,15 +161,30 @@ Cuando termine, cierra Termux.
 
 ### Paso 2 — Crear el daemon.json
 
-Esto le dice a Docker que no use iptables ni bridge (no funcionan en Android).
+Esto configura Docker para Android: sin iptables ni bridge (no funcionan), y usando
+el storage driver `vfs` en lugar de `overlay2`.
 
-En Termux:
+> **¿Por qué vfs?** El kernel 4.4 de Samsung tiene limitaciones con overlay2 que impiden
+> que procesos dentro de los contenedores lean ficheros de la imagen (rsync falla con
+> "Operation not permitted"). `vfs` es más simple y no tiene esas limitaciones.
+> El inconveniente es que usa más espacio en disco (~2-3x más que overlay2).
+
+En Termux (la ruta correcta en Termux es distinta a Linux normal):
 
 ```sh
 su
-mkdir -p /etc/docker
-cat > /etc/docker/daemon.json << 'EOF'
-{"iptables": false, "ip-masq": false, "bridge": "none"}
+mkdir -p /data/data/com.termux/files/usr/etc/docker
+cat > /data/data/com.termux/files/usr/etc/docker/daemon.json << 'EOF'
+{
+    "data-root": "/data/data/com.termux/files/usr/lib/docker",
+    "exec-root": "/data/data/com.termux/files/usr/var/run/docker",
+    "pidfile": "/data/data/com.termux/files/usr/var/run/docker.pid",
+    "hosts": ["unix:///data/data/com.termux/files/usr/var/run/docker.sock"],
+    "storage-driver": "vfs",
+    "iptables": false,
+    "ip-masq": false,
+    "bridge": "none"
+}
 EOF
 exit
 ```
