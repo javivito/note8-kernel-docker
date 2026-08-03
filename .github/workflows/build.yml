@@ -25,31 +25,32 @@ jobs:
           sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-9 /usr/local/bin/aarch64-linux-gnu-gcc
           aarch64-linux-gnu-gcc --version
 
-      - name: Clone kernel source
+      - name: Clone kernel source (8890q lineage-19.1 = kernel 4.4.302, LineageOS 20)
         run: |
           git clone --depth=1 \
             --branch lineage-19.1 \
             https://github.com/8890q/android_kernel_samsung_universal8895 \
             kernel
 
-      - name: Apply source patches
-        run: |
-          cd kernel
-          python3 ../patches/apply_patches.py
-
       - name: Apply kernel config
         run: |
           cd kernel
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- exynos8895-greatlte_defconfig
           cat ../docker.fragment >> .config
+          # Disable RKP Knox blobs (Knox already burned, Magisk installed)
           printf 'CONFIG_RKP=n\nCONFIG_RKP_KDP=n\nCONFIG_RKP_NS_PROT=n\n' >> .config
           printf 'CONFIG_RKP_DMAP_PROT=n\nCONFIG_RKP_6G=n\nCONFIG_RKP_CFP=n\n' >> .config
           printf 'CONFIG_RKP_CFP_JOPP=n\nCONFIG_TIMA=n\nCONFIG_TIMA_LOG=n\n' >> .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Verify config
+      - name: Apply source patches (BPF + IPC fixes)
         run: |
-          grep -E "CONFIG_BRIDGE|CONFIG_OVERLAY_FS|CONFIG_VETH|CONFIG_NET_NS|CGROUP_BPF" kernel/.config
+          cd kernel
+          python3 ../patches/apply_patches.py
+
+      - name: Verify Docker options
+        run: |
+          grep -E "CONFIG_BRIDGE|CONFIG_OVERLAY_FS|CONFIG_VETH|CONFIG_NET_NS" kernel/.config
 
       - name: Build kernel (GCC)
         run: |
@@ -65,20 +66,29 @@ jobs:
       - name: Check output
         if: always()
         run: |
+          echo "=== arch/arm64/boot ==="
           ls -lh kernel/arch/arm64/boot/ 2>/dev/null || echo "(not built)"
-          tail -20 /tmp/kernel_build.log 2>/dev/null
-          grep -E "Error [0-9]|undefined reference|error:" /tmp/kernel_build.log 2>/dev/null | grep -v "warning:" | tail -10 || echo "no errors"
+          echo "=== Last 30 lines ==="
+          tail -30 /tmp/kernel_build.log 2>/dev/null || echo "(no log)"
+          echo "=== Errors ==="
+          grep -E "Error [0-9]|undefined reference|error:" /tmp/kernel_build.log 2>/dev/null | grep -v "warning:" | tail -20 || echo "none"
 
       - name: Package with AnyKernel3
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
           sed -i 's/do.devicecheck=1/do.devicecheck=0/' AnyKernel3/anykernel.sh
           sed -i 's/device.name1=/device.name1=greatlte/' AnyKernel3/anykernel.sh
+          # Fix partition path for greatlte (UFS, not MMC)
           sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|block=/dev/block/platform/11120000.ufs/by-name/BOOT;|' AnyKernel3/anykernel.sh
-          cp kernel/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          cd AnyKernel3 && zip -r9 ../note8-kernel-docker.zip * -x '*.git*' README.md
+          if [ -f kernel/arch/arm64/boot/Image.gz-dtb ]; then
+            cp kernel/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f kernel/arch/arm64/boot/Image.gz ]; then
+            cp kernel/arch/arm64/boot/Image.gz AnyKernel3/
+          fi
+          cd AnyKernel3
+          zip -r9 ../note8-kernel-docker.zip * -x '*.git*' README.md
 
-      - name: Upload artifacts
+      - name: Upload kernel zip
         uses: actions/upload-artifact@v4
         with:
           name: note8-kernel-docker
@@ -89,5 +99,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: note8-kernel-image
-          path: kernel/arch/arm64/boot/Image.gz-dtb
+          path: |
+            kernel/arch/arm64/boot/Image.gz-dtb
+            kernel/arch/arm64/boot/Image.gz
           retention-days: 30
+          if-no-files-found: warn
