@@ -5,14 +5,33 @@
 - Termux con paquete `docker` instalado
 - `/etc/docker/daemon.json` con `iptables:false, bridge:none`
 - Script `/sdcard/Download/start_docker_note8.sh` en el dispositivo
+- (Opcional) Termux:Boot instalado desde F-Droid para arranque automático
 
 ## 1. Arrancar Docker (tras cada reboot)
 
-Desde Termux:
+### Manual — desde Termux:
 ```sh
 su -c 'sh /sdcard/Download/start_docker_note8.sh'
 ```
 Espera ~20 segundos hasta que aparezca "Docker is up!".
+
+### Automático — con Termux:Boot
+
+Instalar **Termux:Boot** desde F-Droid y abrirlo al menos una vez para que quede registrado.
+
+Crear el script de arranque:
+```sh
+mkdir -p ~/.termux/boot
+cat > ~/.termux/boot/start_docker.sh << 'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+# Esperar a que el sistema arranque del todo
+sleep 30
+su -c 'sh /sdcard/Download/start_docker_note8.sh'
+EOF
+chmod +x ~/.termux/boot/start_docker.sh
+```
+
+A partir del siguiente reboot, Docker arranca solo sin intervención.
 
 O desde PC con ADB:
 ```sh
@@ -50,7 +69,45 @@ adb shell "su -c 'PATH=/data/data/com.termux/files/usr/bin:/system/xbin:/system/
 
 ## 4. Configurar para no escribir DOCKER_HOST siempre
 
-Ver sección 2 — el bashrc trick aplica igual.
+Hay tres opciones. La recomendada es el **wrapper script** porque funciona en sesiones interactivas, en scripts, y en cualquier llamada a `docker` sin depender de que el entorno esté cargado.
+
+### Opción A: Wrapper script (recomendada)
+
+Renombrar el binario original y crear un wrapper que inyecta el socket:
+
+```sh
+# Como root en Termux
+TBIN=/data/data/com.termux/files/usr/bin
+mv $TBIN/docker $TBIN/docker.real
+
+cat > $TBIN/docker << 'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+DOCKER_HOST=unix:///data/data/com.termux/files/usr/var/run/docker.sock \
+  exec /data/data/com.termux/files/usr/bin/docker.real "$@"
+EOF
+
+chmod +x $TBIN/docker
+```
+
+Desde ese momento `docker ps`, `docker run`, etc. funcionan sin variables extra.
+
+### Opción B: Variable en bashrc
+
+```sh
+echo 'export DOCKER_HOST=unix:///data/data/com.termux/files/usr/var/run/docker.sock' \
+  >> /data/data/com.termux/files/usr/etc/bash.bashrc
+```
+
+Funciona en sesiones interactivas (`su` en Termux). No funciona si llamas a `docker` desde un script sin cargar el entorno.
+
+### Opción C: Alias
+
+```sh
+echo "alias docker='DOCKER_HOST=unix:///data/data/com.termux/files/usr/var/run/docker.sock docker'" \
+  >> /data/data/com.termux/files/usr/etc/bash.bashrc
+```
+
+Solo funciona en shells interactivos con bash. No sirve en scripts.
 
 ## Notas importantes
 
