@@ -7,8 +7,8 @@
 
 | Fichero | Ubicación en dispositivo | Para qué |
 |---|---|---|
-| `start_docker_note8.sh` | `/sdcard/Download/start_docker_note8.sh` | Arranca dockerd con cgroupv1 y storage driver vfs |
-| `daemon.json` | `/data/data/com.termux/files/usr/etc/docker/daemon.json` | Config de dockerd (vfs, sin iptables ni bridge) |
+| `start_docker_note8.sh` | `/sdcard/Download/start_docker_note8.sh` | Arranca dockerd con cgroupv1 y storage driver overlay2 |
+| `daemon.json` | `/data/data/com.termux/files/usr/etc/docker/daemon.json` | Config de dockerd (overlay2, sin iptables ni bridge) |
 | `magisk_service_docker.sh` | `/data/adb/service.d/termux_path.sh` | Arranque automático + docker para root + ADB WiFi |
 | `docker_xbin` | `/data/adb/docker_xbin` | Wrapper docker usado por el service.d |
 | Wrapper Termux | `/data/data/com.termux/files/usr/bin/docker` | Inyecta DOCKER_HOST para usuario Termux |
@@ -108,7 +108,7 @@ services:
       - /data/nextcloud:/var/www/html
 ```
 
-> Con storage driver `vfs` no hace falta `privileged` ni `cap_add`.
+> Con storage driver `overlay2` no hace falta `privileged` ni `cap_add`.
 > Cambiar `192.168.1.191` por la IP de tu dispositivo.
 > Acceder en `http://<ip>:80`
 
@@ -161,13 +161,12 @@ Cuando termine, cierra Termux.
 
 ### Paso 2 — Crear el daemon.json
 
-Esto configura Docker para Android: sin iptables ni bridge (no funcionan), y usando
-el storage driver `vfs` en lugar de `overlay2`.
+Esto configura Docker para Android: sin iptables ni bridge (no funcionan), usando
+el storage driver `overlay2`.
 
-> **¿Por qué vfs?** El kernel 4.4 de Samsung tiene limitaciones con overlay2 que impiden
-> que procesos dentro de los contenedores lean ficheros de la imagen (rsync falla con
-> "Operation not permitted"). `vfs` es más simple y no tiene esas limitaciones.
-> El inconveniente es que usa más espacio en disco (~2-3x más que overlay2).
+> **Nota:** El kernel custom de esta guía tiene Samsung LSM desactivado (DEFEX, TIMA, Knox).
+> Eso es lo que permite usar overlay2. Con el kernel stock, overlay2 falla dentro de contenedores
+> (rsync da "Operation not permitted"). Si usas un kernel stock, cambia a `"storage-driver": "vfs"`.
 
 En Termux (la ruta correcta en Termux es distinta a Linux normal):
 
@@ -180,7 +179,7 @@ cat > /data/data/com.termux/files/usr/etc/docker/daemon.json << 'EOF'
     "exec-root": "/data/data/com.termux/files/usr/var/run/docker",
     "pidfile": "/data/data/com.termux/files/usr/var/run/docker.pid",
     "hosts": ["unix:///data/data/com.termux/files/usr/var/run/docker.sock"],
-    "storage-driver": "vfs",
+    "storage-driver": "overlay2",
     "iptables": false,
     "ip-masq": false,
     "bridge": "none"
