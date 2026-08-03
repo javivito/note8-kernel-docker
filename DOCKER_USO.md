@@ -98,39 +98,145 @@ Log del daemon: `/sdcard/Download/dockerd.log`
 
 ---
 
-## 5. Instalar el setup en otro dispositivo
+## 5. Instalar el setup en otro dispositivo (paso a paso)
 
-Si quieres replicar esto en otro móvil necesitas:
+> Requisito previo: kernel custom con Docker habilitado ya flasheado. Ver `KERNEL_DOCKER_GUIDE.md`.
+> El móvil debe tener **Magisk** instalado (root) y **Termux** instalado desde F-Droid.
 
-1. **Kernel compatible** con Docker (BPF stubs + IPC fix) — ver `KERNEL_DOCKER_GUIDE.md`
-2. **Termux** con `docker` instalado: `pkg install docker`
-3. **daemon.json** en `/etc/docker/daemon.json`:
-   ```json
-   {"iptables": false, "ip-masq": false, "bridge": "none"}
-   ```
-4. **Script de arranque** — copiar `start_docker_note8.sh` a `/sdcard/Download/`
-5. **Wrapper Termux** — ejecutar esto _desde dentro de Termux_ (no desde ADB/root):
-   ```sh
-   TBIN=/data/data/com.termux/files/usr/bin
-   mv $TBIN/docker $TBIN/docker.real
-   cp docker_wrapper.sh $TBIN/docker
-   chmod +x $TBIN/docker
-   ```
-   > Los ficheros de Termux necesitan el UID de Termux. Si los creas como root desde ADB
-   > quedan con contexto SELinux incorrecto y Termux no puede ejecutarlos.
+---
 
-6. **Script Magisk service.d** — copiar `magisk_service_docker.sh` a `/data/adb/service.d/termux_path.sh`
-   y hacerlo ejecutable. En cada boot copia el wrapper a `/debug_ramdisk/` (que está en el PATH de root).
-   También copiar `docker_xbin` a `/sdcard/Download/docker_xbin` en el dispositivo.
+### Paso 1 — Instalar docker en Termux
 
-7. **Termux:Boot** (opcional) — instalar desde F-Droid, abrirlo una vez, y ejecutar
-   _desde Termux_:
-   ```sh
-   mkdir -p ~/.termux/boot
-   cp termux_boot_start_docker.sh ~/.termux/boot/start_docker.sh
-   chmod +x ~/.termux/boot/start_docker.sh
-   ```
-   > Igual que el wrapper: crear siempre desde Termux, nunca como root externo.
+Abre Termux en el móvil y escribe:
+
+```sh
+pkg update
+pkg install docker
+```
+
+Cuando termine, cierra Termux.
+
+---
+
+### Paso 2 — Crear el daemon.json
+
+Esto le dice a Docker que no use iptables ni bridge (no funcionan en Android).
+
+En Termux:
+
+```sh
+su
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json << 'EOF'
+{"iptables": false, "ip-masq": false, "bridge": "none"}
+EOF
+exit
+```
+
+---
+
+### Paso 3 — Copiar los scripts al móvil
+
+Descarga desde el repositorio estos tres ficheros y ponlos en `/sdcard/Download/`:
+
+- `start_docker_note8.sh` — arranca Docker
+- `docker_xbin` — wrapper para root (es el fichero `docker_wrapper.sh` renombrado)
+- `magisk_service_docker.sh` — script de arranque de Magisk
+
+Puedes hacerlo conectando el móvil al PC por USB y copiando directamente a la carpeta
+Descargas, o usando ADB:
+
+```sh
+adb push start_docker_note8.sh /sdcard/Download/start_docker_note8.sh
+adb push docker_wrapper.sh /sdcard/Download/docker_xbin
+adb push magisk_service_docker.sh /sdcard/Download/magisk_service_docker.sh
+```
+
+---
+
+### Paso 4 — Instalar el wrapper en Termux
+
+Esto hace que puedas escribir `docker` en Termux sin poner variables de entorno.
+
+**Abre Termux** en el móvil (importante: no como root, abrir Termux normal) y escribe:
+
+```sh
+mv /data/data/com.termux/files/usr/bin/docker \
+   /data/data/com.termux/files/usr/bin/docker.real
+
+cp /sdcard/Download/docker_xbin \
+   /data/data/com.termux/files/usr/bin/docker
+
+chmod +x /data/data/com.termux/files/usr/bin/docker
+```
+
+> **Por qué desde Termux y no desde root:** Los ficheros dentro de la carpeta de Termux
+> necesitan pertenecer al usuario de Termux. Si los creas como root (con `su`) Android
+> les pone un identificador de seguridad incorrecto y Termux no puede usarlos,
+> aunque el permiso sea correcto.
+
+---
+
+### Paso 5 — Instalar el script de Magisk
+
+Esto hace que `docker` funcione también cuando escribes `su` en Termux (shell de root).
+Magisk ejecuta este script en cada arranque del móvil.
+
+En Termux:
+
+```sh
+su
+cp /sdcard/Download/magisk_service_docker.sh /data/adb/service.d/termux_path.sh
+chmod +x /data/adb/service.d/termux_path.sh
+exit
+```
+
+---
+
+### Paso 6 — Instalar el arranque automático (opcional pero recomendado)
+
+Con esto Docker arranca solo al encender el móvil sin que tengas que hacer nada.
+
+Primero instala **Termux:Boot** desde F-Droid y ábrelo una vez para que quede registrado.
+Luego en Termux:
+
+```sh
+mkdir -p ~/.termux/boot
+
+cat > ~/.termux/boot/start_docker.sh << 'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+sleep 30
+su -c 'sh /sdcard/Download/start_docker_note8.sh'
+EOF
+
+chmod +x ~/.termux/boot/start_docker.sh
+```
+
+> El `sleep 30` es necesario para que el sistema termine de arrancar antes de lanzar Docker.
+> Sin él, Docker falla porque el kernel aún no está listo.
+
+> **Igual que en el paso 4:** hacerlo desde Termux, nunca como root externo.
+
+---
+
+### Paso 7 — Reiniciar y verificar
+
+Reinicia el móvil. Después de ~50 segundos, abre Termux y prueba:
+
+```sh
+su
+docker ps
+```
+
+Si ves una tabla (aunque esté vacía) es que todo funciona.
+
+Si falla, arranca Docker manualmente:
+
+```sh
+su -c 'sh /sdcard/Download/start_docker_note8.sh'
+```
+
+Y vuelve a probar `docker ps`.
 
 ---
 
