@@ -1,3 +1,0 @@
-#!/system/bin/sh
-export PATH=/data/data/com.termux/files/usr/bin:/system/xbin:/system/bin
-DOCKER_HOST=unix:///data/data/com.termux/files/usr/var/run/docker.sock exec /data/data/com.termux/files/usr/bin/docker.real "$@"

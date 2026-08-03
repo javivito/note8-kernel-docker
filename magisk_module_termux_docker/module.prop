@@ -1,6 +1,0 @@
-id=termux_docker
-name=Termux Docker PATH
-version=v1
-versionCode=1
-author=vito
-description=Expone docker de Termux en /system/xbin para root

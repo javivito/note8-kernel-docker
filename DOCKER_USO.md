@@ -10,7 +10,7 @@
 | Script arranque Docker | `/sdcard/Download/start_docker_note8.sh` | Arranca dockerd con cgroupv1 |
 | Arranque automático | `~/.termux/boot/start_docker.sh` | Lo lanza solo al encender el móvil |
 | Wrapper Termux | `/data/data/com.termux/files/usr/bin/docker` | Inyecta el socket, evita escribir DOCKER_HOST |
-| Módulo Magisk | `/data/adb/modules/termux_docker/` | Expone `docker` en `/system/xbin` para root |
+| Script Magisk service.d | `/data/adb/service.d/termux_path.sh` | Pone `docker` en `/debug_ramdisk` para root en cada boot |
 
 ---
 
@@ -119,8 +119,9 @@ Si quieres replicar esto en otro móvil necesitas:
    > Los ficheros de Termux necesitan el UID de Termux. Si los creas como root desde ADB
    > quedan con contexto SELinux incorrecto y Termux no puede ejecutarlos.
 
-6. **Módulo Magisk** — copiar la carpeta `magisk_module_termux_docker/` a `/data/adb/modules/`
-   y reiniciar. Esto expone `docker` en `/system/xbin` para que funcione al hacer `su`.
+6. **Script Magisk service.d** — copiar `magisk_service_docker.sh` a `/data/adb/service.d/termux_path.sh`
+   y hacerlo ejecutable. En cada boot copia el wrapper a `/debug_ramdisk/` (que está en el PATH de root).
+   También copiar `docker_xbin` a `/sdcard/Download/docker_xbin` en el dispositivo.
 
 7. **Termux:Boot** (opcional) — instalar desde F-Droid, abrirlo una vez, y ejecutar
    _desde Termux_:
