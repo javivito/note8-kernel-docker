@@ -8,6 +8,6 @@ PREFIX=/data/data/com.termux/files/usr
 # Esperar a que XFCE esté levantado
 sleep 70
 
-nohup chroot-distro login debian --shared-tmp -- bash -c '
-  x11vnc -display :1 -forever -nopw -quiet -rfbport 5901
-' >> $PREFIX/var/log/x11vnc.log 2>&1 &
+# x11vnc corre en Termux (no en el chroot) para tener acceso al Xauthority
+DISPLAY=:1 nohup x11vnc -display :1 -forever -nopw -quiet -rfbport 5901 \
+  >> $PREFIX/var/log/x11vnc.log 2>&1 &
