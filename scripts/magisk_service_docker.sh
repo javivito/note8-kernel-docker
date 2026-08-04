@@ -42,22 +42,30 @@ echo "[$(date)] step3: adb wifi ok" >> $LOG
 sleep 45
 echo "[$(date)] step4: sleep done, starting docker" >> $LOG
 
-# 4. Arrancar dockerd con cgroupv1 (requerido en kernel 4.4 con Samsung LSM)
-#    unshare -m crea un namespace de mount privado donde montamos cgroupv1
-#    sustituyendo el cgroupv2 del sistema (que requeriría BPF, bloqueado por Samsung)
-killall dockerd containerd 2>/dev/null
-sleep 2
+# 4. Arrancar dockerd con cgroupv1, con retry si containerd tarda en arrancar
+start_docker() {
+  killall dockerd containerd 2>/dev/null
+  sleep 3
+  unshare -m sh -c "
+    export PATH=$PREFIX/bin:/system/xbin:/system/bin
+    mount -t tmpfs tmpfs /sys/fs/cgroup
+    for s in devices memory cpu cpuacct freezer pids; do
+      mkdir -p /sys/fs/cgroup/\$s
+      mount -t cgroup -o \$s cgroup /sys/fs/cgroup/\$s 2>/dev/null
+    done
+    exec $PREFIX/bin/dockerd >> /data/data/com.termux/files/home/scripts/dockerd.log 2>&1
+  " &
+}
 
-unshare -m sh -c "
-  export PATH=$PREFIX/bin:/system/xbin:/system/bin
-  mount -t tmpfs tmpfs /sys/fs/cgroup
-  for s in devices memory cpu cpuacct freezer pids; do
-    mkdir -p /sys/fs/cgroup/\$s
-    mount -t cgroup -o \$s cgroup /sys/fs/cgroup/\$s 2>/dev/null
-  done
-  exec $PREFIX/bin/dockerd >> /data/data/com.termux/files/home/scripts/dockerd.log 2>&1
-" &
+start_docker
+echo "[$(date)] step5: dockerd launched (intento 1)" >> $LOG
 
-echo "[$(date)] step5: dockerd launched" >> $LOG
-sleep 25
+# Esperar y comprobar si arrancó; si no, reintentar una vez
+sleep 30
+if ! $PREFIX/bin/docker -H unix://$PREFIX/var/run/docker.sock info > /dev/null 2>&1; then
+  echo "[$(date)] step5b: docker no responde, reintentando" >> $LOG
+  start_docker
+  sleep 20
+fi
+
 echo "[$(date)] step6: done" >> $LOG
