@@ -69,3 +69,10 @@ if ! $PREFIX/bin/docker -H unix://$PREFIX/var/run/docker.sock info > /dev/null 2
 fi
 
 echo "[$(date)] step6: done" >> $LOG
+
+# 5. CPU governor a performance (Note 8 enchufado = servidor permanente)
+#    A53: cpu0-3 (max 1690MHz), A73: cpu4-7 (max 2314MHz)
+for cpu in 0 1 2 3 4 5 6 7; do
+  echo performance > /sys/devices/system/cpu/cpu${cpu}/cpufreq/scaling_governor 2>/dev/null
+done
+echo "[$(date)] step7: cpu governor performance" >> $LOG
